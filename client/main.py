@@ -23,6 +23,7 @@ from shared.protocol import (
 )
 from .kiosk_desktop import KioskDesktop
 from .fake_toolbar import FakeToolbar
+import qasync
 
 # Configure logging
 logging.basicConfig(
@@ -245,12 +246,14 @@ class KioskClient(QMainWindow):
             self.height() - toolbar_height
         )
 
-def main():
-    """Main entry point."""
+async def main():
     app = QApplication(sys.argv)
+    loop = qasync.QEventLoop(app)
+    asyncio.set_event_loop(loop)
     window = KioskClient()
     window.show()
-    return app.exec()
+    with loop:
+        await loop.run_forever()
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    asyncio.run(main()) 
