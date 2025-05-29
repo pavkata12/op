@@ -2,7 +2,7 @@
 Protocol definitions for client-server communication.
 """
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Optional
 from datetime import datetime
 from .constants import MessageType, SessionState
@@ -37,20 +37,20 @@ class SessionMessage(Message):
 @dataclass
 class AllowedAppsMessage(Message):
     """Message containing allowed applications configuration."""
-    apps: List[Dict[str, str]]  # List of dicts with name, path, icon_path
+    apps: List[Dict[str, str]] = field(default_factory=list)  # List of dicts with name, path, icon_path
 
 @dataclass
 class ClientStatusMessage(Message):
     """Message containing client status information."""
-    state: str
-    active_apps: List[str]
+    state: str = ""
+    active_apps: List[str] = field(default_factory=list)
     remaining_time: Optional[int] = None
     error: Optional[str] = None
 
 @dataclass
 class ErrorMessage(Message):
     """Message for error reporting."""
-    error: str
+    error: str = ""
     details: Optional[str] = None
 
 def create_heartbeat(client_id: str) -> Message:
