@@ -26,15 +26,25 @@ from shared.protocol import (
 from .kiosk_desktop import KioskDesktop
 from .fake_toolbar import FakeToolbar
 import qasync
+import argparse
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'client_config.json')
 
-# Configure logging
+# Add file logging for persistent error tracking
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('client_error.log', encoding='utf-8')
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# Parse --dev flag for developer mode
+parser = argparse.ArgumentParser()
+parser.add_argument('--dev', action='store_true', help='Run in developer (windowed) mode')
+args, _ = parser.parse_known_args()
 
 def get_server_ip():
     if os.path.exists(CONFIG_FILE):
@@ -59,12 +69,13 @@ class KioskClient(QMainWindow):
         super().__init__()
         self.server_ip = server_ip
         self.client_ip = self._get_local_ip()
-        self.setWindowFlags(
-            Qt.Window |
-            Qt.FramelessWindowHint |
-            Qt.WindowStaysOnTopHint
-        )
-        self.showFullScreen()
+        if not args.dev:
+            self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+            self.showFullScreen()
+        else:
+            self.setWindowTitle('Kiosk Client (DEV MODE)')
+            self.resize(1200, 800)
+            self.show()
         self.desktop = KioskDesktop(self)
         self.toolbar = FakeToolbar(self)
         self.blank_desktop = QMainWindow()
