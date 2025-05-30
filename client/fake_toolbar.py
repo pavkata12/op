@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel,
     QToolButton, QStyle, QSizePolicy
 )
-from PySide6.QtCore import Qt, QSize, Signal
+from PySide6.QtCore import Qt, QSize, Signal, QEvent
 from PySide6.QtGui import QIcon, QPixmap
 from shared.constants import TOOLBAR_HEIGHT, ICON_SIZE
 
@@ -132,9 +132,9 @@ class FakeToolbar(QWidget):
 
     def eventFilter(self, obj, event):
         if obj == self.session_timer_label:
-            if event.type() == event.Enter:
+            if event.type() == QEvent.Enter:
                 self.session_timer_label.setStyleSheet("background: rgba(0,0,0,0.95); color: white; font-size: 20px; border-radius: 8px; padding: 6px 18px;")
-            elif event.type() == event.Leave:
+            elif event.type() == QEvent.Leave:
                 self.session_timer_label.setStyleSheet("background: rgba(0,0,0,0.5); color: white; font-size: 20px; border-radius: 8px; padding: 6px 18px;")
         return super().eventFilter(obj, event)
 
