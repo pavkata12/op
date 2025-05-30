@@ -4,9 +4,9 @@ import asyncio
 import logging
 import json
 from datetime import datetime
-from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QAction
 import qasync
 import socket
 from explorer_watcher import start_watcher
