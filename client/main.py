@@ -27,6 +27,7 @@ from .kiosk_desktop import KioskDesktop
 from .fake_toolbar import FakeToolbar
 import qasync
 import argparse
+import shared.protocol as protocol
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'client_config.json')
 
@@ -177,7 +178,17 @@ class KioskClient(QMainWindow):
                 data = await self.reader.readline()
                 if not data:
                     break
-                message = Message.from_json(data.decode().strip())
+                raw = data.decode().strip()
+                msg_dict = json.loads(raw)
+                msg_type = msg_dict.get('type')
+                if msg_type in [MessageType.SESSION_START, MessageType.SESSION_PAUSE, MessageType.SESSION_RESUME, MessageType.SESSION_END]:
+                    message = protocol.SessionMessage(**msg_dict)
+                elif msg_type == MessageType.ALLOWED_APPS:
+                    message = protocol.AllowedAppsMessage(**msg_dict)
+                elif msg_type == MessageType.CLIENT_STATUS:
+                    message = protocol.ClientStatusMessage(**msg_dict)
+                else:
+                    message = protocol.Message(**msg_dict)
                 await self._handle_message(message)
         except Exception as e:
             logger.error(f"Error receiving messages: {e}")
