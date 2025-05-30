@@ -197,8 +197,10 @@ class KioskClient(QMainWindow):
     async def _handle_message(self, message: Message):
         if message.type == MessageType.SESSION_START:
             self.state = SessionState.ACTIVE
-            self.remaining_time = message.duration
-            self.desktop.set_allowed_apps(message.apps)
+            self.remaining_time = getattr(message, 'duration', 0)
+            # Only set allowed apps if present
+            if hasattr(message, 'apps') and message.apps:
+                self.desktop.set_allowed_apps(message.apps)
             self._show_kiosk()
             self._start_session_timer()
         elif message.type == MessageType.SESSION_PAUSE:
@@ -211,7 +213,7 @@ class KioskClient(QMainWindow):
             self.state = SessionState.ENDED
             self._end_session()
         elif message.type == MessageType.ALLOWED_APPS:
-            if self.state == SessionState.ACTIVE:
+            if hasattr(message, 'apps') and message.apps:
                 self.desktop.set_allowed_apps(message.apps)
         elif message.type == MessageType.REMOVE_CLIENT:
             self._remove_client()
