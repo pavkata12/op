@@ -128,7 +128,10 @@ class KioskClient(QMainWindow):
 
     def _show_kiosk(self):
         self.blank_desktop.hide()
-        self.desktop.showFullScreen()
+        if not args.dev:
+            self.desktop.showFullScreen()
+        else:
+            self.desktop.show()
         self.toolbar.show()
         self.desktop.raise_()
         self.toolbar.raise_()
@@ -346,14 +349,20 @@ class KioskClient(QMainWindow):
         self.toolbar.hide()
         self.blank_desktop.setStyleSheet("background-color: #222; color: white;")
         self.blank_desktop.setWindowTitle("Session Paused")
-        self.blank_desktop.showFullScreen()
+        if not args.dev:
+            self.blank_desktop.showFullScreen()
+        else:
+            self.blank_desktop.show()
         self.blank_desktop.raise_()
         if self.session_timer:
             self.session_timer.stop()
 
     def _resume_session(self):
         self.blank_desktop.hide()
-        self.desktop.showFullScreen()
+        if not args.dev:
+            self.desktop.showFullScreen()
+        else:
+            self.desktop.show()
         self.toolbar.show()
         self.desktop.raise_()
         self.toolbar.raise_()

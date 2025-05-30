@@ -6,13 +6,13 @@ import subprocess
 from typing import Dict, List, Optional
 from PySide6.QtWidgets import (
     QWidget, QGridLayout, QPushButton, QLabel,
-    QScrollArea, QVBoxLayout, QSizePolicy
+    QScrollArea, QVBoxLayout, QSizePolicy, QToolButton
 )
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from shared.constants import ICON_SIZE, GRID_SPACING
 
-class AppIcon(QPushButton):
+class AppIcon(QToolButton):
     """Icon button for launching applications."""
     def __init__(self, app_name: str, icon_path: str, app_path: str, parent=None):
         super().__init__(parent)
@@ -33,17 +33,17 @@ class AppIcon(QPushButton):
         
         # Set style
         self.setStyleSheet("""
-            QPushButton {
+            QToolButton {
                 background-color: transparent;
                 border: none;
                 color: white;
                 padding: 5px;
             }
-            QPushButton:hover {
+            QToolButton:hover {
                 background-color: rgba(255, 255, 255, 0.1);
                 border-radius: 5px;
             }
-            QPushButton:pressed {
+            QToolButton:pressed {
                 background-color: rgba(255, 255, 255, 0.2);
             }
         """)
