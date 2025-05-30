@@ -111,7 +111,7 @@ class KioskClient(QMainWindow):
         self.toolbar.app_closed.connect(self._handle_app_closed)
         self.connection_status = 'Disconnected'
         self.toolbar.session_label.setText('Status: Disconnected')
-        asyncio.create_task(self._connect_to_server())
+        QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
         self._show_blank()
 
     def _show_blank(self):
