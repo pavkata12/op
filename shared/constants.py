@@ -44,6 +44,7 @@ class MessageType:
     ERROR = "error"
     MAINTENANCE = "maintenance"
     SHUTDOWN = "shutdown"
+    REMOVE_CLIENT = "remove_client"
 
 # Session States
 class SessionState:
