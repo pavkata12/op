@@ -111,7 +111,7 @@ class KioskClient(QMainWindow):
         self.toolbar.app_restored.connect(self._handle_app_restored)
         self.toolbar.app_closed.connect(self._handle_app_closed)
         self.connection_status = 'Disconnected'
-        self.toolbar.session_label.setText('Status: Disconnected')
+        self.toolbar.update_session_time('Status: Disconnected')
         QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
         self._show_blank()
 
@@ -151,7 +151,7 @@ class KioskClient(QMainWindow):
                     DEFAULT_SERVER_PORT
                 )
                 self.connection_status = 'Connected'
-                self.toolbar.session_label.setText(f'Status: Connected ({self.client_ip})')
+                self.toolbar.update_session_time(f'Status: Connected ({self.client_ip})')
                 # Send handshake with client_ip
                 hello = {'client_ip': self.client_ip}
                 self.writer.write(json.dumps(hello).encode() + b'\n')
@@ -162,7 +162,7 @@ class KioskClient(QMainWindow):
             except Exception as e:
                 logger.error(f"Connection attempt {attempt + 1} failed: {e}")
                 self.connection_status = 'Disconnected'
-                self.toolbar.session_label.setText('Status: Disconnected')
+                self.toolbar.update_session_time('Status: Disconnected')
                 if attempt < RECONNECT_ATTEMPTS - 1:
                     await asyncio.sleep(RECONNECT_DELAY)
         QMessageBox.critical(
@@ -225,13 +225,13 @@ class KioskClient(QMainWindow):
     def _handle_disconnect(self):
         self.heartbeat_timer.stop()
         self.connection_status = 'Disconnected'
-        self.toolbar.session_label.setText('Status: Disconnected')
+        self.toolbar.update_session_time('Status: Disconnected')
         QMessageBox.warning(
             self,
             "Connection Lost",
             f"Lost connection to server at {self.server_ip}. Attempting to reconnect..."
         )
-        asyncio.create_task(self._connect_to_server())
+        QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
 
     def _send_heartbeat(self):
         if self.writer and not self.writer.is_closing():
