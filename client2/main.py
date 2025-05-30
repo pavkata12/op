@@ -4,7 +4,7 @@ import asyncio
 import logging
 import json
 from datetime import datetime
-from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QPushButton
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QAction
 import qasync
@@ -28,9 +28,12 @@ class TimerOverlay(QWidget):
         self.label.setStyleSheet(
             'background: rgba(0,0,0,0.7); color: white; font-size: 60px; border-radius: 24px; padding: 40px 0px;'
         )
+        self.min_btn = QPushButton('Minimize to tray', self)
+        self.min_btn.setStyleSheet('font-size: 18px; padding: 8px 24px; margin-top: 16px;')
         layout = QVBoxLayout(self)
         layout.addWidget(self.label)
-        self.resize(800, 160)
+        layout.addWidget(self.min_btn)
+        self.resize(800, 200)
         self.move(200, 40)  # Top center-ish
     def set_time(self, text):
         self.label.setText(text)
@@ -77,6 +80,7 @@ class Client2App:
         self.connection_status = 'Disconnected'
         start_watcher()  # Start closing explorer folders
         self._init_tray()
+        self.overlay.min_btn.clicked.connect(self.overlay.hide)
         self._show_blank()
         QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
         self._notified_5min = False
