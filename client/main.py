@@ -25,6 +25,7 @@ from shared.protocol import (
 from .kiosk_desktop import KioskDesktop
 from .fake_toolbar import FakeToolbar
 import qasync
+import socket
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'client_config.json')
 
@@ -57,6 +58,7 @@ class KioskClient(QMainWindow):
     def __init__(self, server_ip):
         super().__init__()
         self.server_ip = server_ip
+        self.client_ip = self._get_local_ip()
         self.setWindowFlags(
             Qt.Window |
             Qt.FramelessWindowHint |
@@ -86,6 +88,8 @@ class KioskClient(QMainWindow):
         self.toolbar.app_minimized.connect(self._handle_app_minimized)
         self.toolbar.app_restored.connect(self._handle_app_restored)
         self.toolbar.app_closed.connect(self._handle_app_closed)
+        self.connection_status = 'Disconnected'
+        self.toolbar.session_label.setText('Status: Disconnected')
         asyncio.create_task(self._connect_to_server())
         self._show_blank()
 
@@ -102,6 +106,16 @@ class KioskClient(QMainWindow):
         self.desktop.raise_()
         self.toolbar.raise_()
 
+    def _get_local_ip(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect((self.server_ip, DEFAULT_SERVER_PORT))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return 'Unknown'
+
     async def _connect_to_server(self):
         for attempt in range(RECONNECT_ATTEMPTS):
             try:
@@ -110,11 +124,20 @@ class KioskClient(QMainWindow):
                     DEFAULT_SERVER_PORT
                 )
                 logger.info(f"Connected to server at {self.server_ip}:{DEFAULT_SERVER_PORT}")
+                self.connection_status = 'Connected'
+                self.toolbar.session_label.setText(f'Status: Connected ({self.client_ip})')
+                # Send client IP to server as first message
+                hello_msg = Message(type='client_hello', client_id=self.client_id, timestamp=None)
+                hello_msg.client_ip = self.client_ip
+                self.writer.write(json.dumps({**asdict(hello_msg), 'client_ip': self.client_ip}).encode() + b'\n')
+                await self.writer.drain()
                 self.heartbeat_timer.start(HEARTBEAT_INTERVAL * 1000)
                 asyncio.create_task(self._receive_messages())
                 return
             except Exception as e:
                 logger.error(f"Connection attempt {attempt + 1} failed: {e}")
+                self.connection_status = 'Disconnected'
+                self.toolbar.session_label.setText('Status: Disconnected')
                 if attempt < RECONNECT_ATTEMPTS - 1:
                     await asyncio.sleep(RECONNECT_DELAY)
         QMessageBox.critical(
@@ -160,6 +183,8 @@ class KioskClient(QMainWindow):
 
     def _handle_disconnect(self):
         self.heartbeat_timer.stop()
+        self.connection_status = 'Disconnected'
+        self.toolbar.session_label.setText('Status: Disconnected')
         QMessageBox.warning(
             self,
             "Connection Lost",
@@ -179,14 +204,21 @@ class KioskClient(QMainWindow):
         self.session_timer = QTimer()
         self.session_timer.timeout.connect(self._update_session_time)
         self.session_timer.start(1000)
-        self.toolbar.update_session_time(self.remaining_time)
+        self._update_session_time()
 
     def _update_session_time(self):
-        if self.remaining_time is not None:
+        if self.state == SessionState.PAUSED:
+            self.toolbar.session_label.setText(f'Status: Paused ({self.client_ip})')
+        elif self.state == SessionState.ACTIVE and self.remaining_time is not None:
+            hours = self.remaining_time // 3600
+            minutes = (self.remaining_time % 3600) // 60
+            seconds = self.remaining_time % 60
+            self.toolbar.session_label.setText(f'Status: Connected ({self.client_ip}) | Time left: {hours:02d}:{minutes:02d}:{seconds:02d}')
             self.remaining_time -= 1
-            self.toolbar.update_session_time(self.remaining_time)
-            if self.remaining_time <= 0:
+            if self.remaining_time < 0:
                 self._end_session()
+        else:
+            self.toolbar.session_label.setText(f'Status: Connected ({self.client_ip}) | No session')
 
     def _end_session(self):
         if self.session_timer:
