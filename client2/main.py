@@ -4,8 +4,9 @@ import asyncio
 import logging
 import json
 from datetime import datetime
-from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QAction
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QIcon
 import qasync
 import socket
 from explorer_watcher import start_watcher
@@ -75,8 +76,38 @@ class Client2App:
         self.session_timer.timeout.connect(self._tick)
         self.connection_status = 'Disconnected'
         start_watcher()  # Start closing explorer folders
+        self._init_tray()
         self._show_blank()
         QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
+        self._notified_5min = False
+        self._notified_1min = False
+    def _init_tray(self):
+        self.tray = QSystemTrayIcon(QIcon())
+        self.tray.setToolTip('Kiosk Session Timer')
+        menu = QMenu()
+        show_action = QAction('Show Timer')
+        hide_action = QAction('Hide Timer')
+        quit_action = QAction('Exit')
+        show_action.triggered.connect(self._show_overlay)
+        hide_action.triggered.connect(self.overlay.hide)
+        quit_action.triggered.connect(self._exit)
+        menu.addAction(show_action)
+        menu.addAction(hide_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._on_tray_activated)
+        self.tray.show()
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.Trigger:
+            if self.overlay.isVisible():
+                self.overlay.hide()
+            else:
+                self._show_overlay()
+    def _exit(self):
+        self.session_timer.stop()
+        self.tray.hide()
+        self.app.quit()
     def _get_server_ip(self):
         if os.path.exists(SERVER_CONFIG):
             with open(SERVER_CONFIG, 'r') as f:
@@ -153,6 +184,8 @@ class Client2App:
     def start_session(self, duration):
         self.session_active = True
         self.remaining_time = duration
+        self._notified_5min = False
+        self._notified_1min = False
         self._show_overlay()
         self._update_timer()
         self.session_timer.start(1000)
@@ -167,6 +200,13 @@ class Client2App:
                 self.end_session()
             else:
                 self._update_timer()
+                # Balloon notifications
+                if not self._notified_5min and self.remaining_time == 300:
+                    self.tray.showMessage('Session Timer', 'Остават 5 минути!', QSystemTrayIcon.Information, 5000)
+                    self._notified_5min = True
+                if not self._notified_1min and self.remaining_time == 60:
+                    self.tray.showMessage('Session Timer', 'Остава 1 минута!', QSystemTrayIcon.Information, 5000)
+                    self._notified_1min = True
     def _update_timer(self):
         h = self.remaining_time // 3600
         m = (self.remaining_time % 3600) // 60
