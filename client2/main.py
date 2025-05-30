@@ -86,7 +86,8 @@ class Client2App:
         self._notified_5min = False
         self._notified_1min = False
     def _init_tray(self):
-        self.tray = QSystemTrayIcon(QIcon())
+        icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
+        self.tray = QSystemTrayIcon(QIcon(icon_path))
         self.tray.setToolTip('Kiosk Session Timer')
         menu = QMenu()
         show_action = QAction('Show Timer')
