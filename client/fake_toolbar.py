@@ -51,10 +51,6 @@ class FakeToolbar(QWidget):
         self.app_buttons: Dict[str, AppButton] = {}
         
         # Create session controls
-        self.session_label = QLabel("Session: 00:00:00")
-        self.session_label.setStyleSheet("color: white;")
-        self.layout.addWidget(self.session_label)
-        
         self.layout.addStretch()
         
         # Create minimize/restore/close buttons
@@ -92,6 +88,15 @@ class FakeToolbar(QWidget):
                 background-color: #4f4f4f;
             }
         """)
+        # Floating session timer label (upper right)
+        self.session_timer_label = QLabel("", parent)
+        self.session_timer_label.setStyleSheet("background: rgba(0,0,0,0.5); color: white; font-size: 20px; border-radius: 8px; padding: 6px 18px;")
+        self.session_timer_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.session_timer_label.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.session_timer_label.setAttribute(Qt.WA_TranslucentBackground)
+        self.session_timer_label.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.session_timer_label.setVisible(False)
+        self.session_timer_label.installEventFilter(self)
 
     def add_app(self, app_name: str, icon_path: str):
         """Add an application to the toolbar."""
@@ -113,12 +118,25 @@ class FakeToolbar(QWidget):
         if app_name in self.app_buttons:
             self.app_buttons[app_name].setChecked(is_active)
 
-    def update_session_time(self, remaining_seconds: int):
-        """Update the session time display."""
-        hours = remaining_seconds // 3600
-        minutes = (remaining_seconds % 3600) // 60
-        seconds = remaining_seconds % 60
-        self.session_label.setText(f"Session: {hours:02d}:{minutes:02d}:{seconds:02d}")
+    def update_session_time(self, text: str):
+        self.session_timer_label.setText(text)
+        self.session_timer_label.setVisible(True)
+        # Place in upper right corner of parent
+        if self.parent():
+            parent_geom = self.parent().geometry()
+            label_width = self.session_timer_label.sizeHint().width()
+            label_height = self.session_timer_label.sizeHint().height()
+            x = parent_geom.x() + parent_geom.width() - label_width - 30
+            y = parent_geom.y() + 30
+            self.session_timer_label.setGeometry(x, y, label_width, label_height)
+
+    def eventFilter(self, obj, event):
+        if obj == self.session_timer_label:
+            if event.type() == event.Enter:
+                self.session_timer_label.setStyleSheet("background: rgba(0,0,0,0.95); color: white; font-size: 20px; border-radius: 8px; padding: 6px 18px;")
+            elif event.type() == event.Leave:
+                self.session_timer_label.setStyleSheet("background: rgba(0,0,0,0.5); color: white; font-size: 20px; border-radius: 8px; padding: 6px 18px;")
+        return super().eventFilter(obj, event)
 
     def _handle_app_click(self, app_name: str, checked: bool):
         """Handle app button click."""

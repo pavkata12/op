@@ -178,18 +178,22 @@ class KioskClient(QMainWindow):
                 data = await self.reader.readline()
                 if not data:
                     break
-                raw = data.decode().strip()
-                msg_dict = json.loads(raw)
-                msg_type = msg_dict.get('type')
-                if msg_type in [MessageType.SESSION_START, MessageType.SESSION_PAUSE, MessageType.SESSION_RESUME, MessageType.SESSION_END]:
-                    message = protocol.SessionMessage(**msg_dict)
-                elif msg_type == MessageType.ALLOWED_APPS:
-                    message = protocol.AllowedAppsMessage(**msg_dict)
-                elif msg_type == MessageType.CLIENT_STATUS:
-                    message = protocol.ClientStatusMessage(**msg_dict)
-                else:
-                    message = protocol.Message(**msg_dict)
-                await self._handle_message(message)
+                try:
+                    raw = data.decode().strip()
+                    logger.info(f"Received: {raw}")
+                    msg_dict = json.loads(raw)
+                    msg_type = msg_dict.get('type')
+                    if msg_type in [MessageType.SESSION_START, MessageType.SESSION_PAUSE, MessageType.SESSION_RESUME, MessageType.SESSION_END]:
+                        message = protocol.SessionMessage(**msg_dict)
+                    elif msg_type == MessageType.ALLOWED_APPS:
+                        message = protocol.AllowedAppsMessage(**msg_dict)
+                    elif msg_type == MessageType.CLIENT_STATUS:
+                        message = protocol.ClientStatusMessage(**msg_dict)
+                    else:
+                        message = protocol.Message(**msg_dict)
+                    await self._handle_message(message)
+                except Exception as e:
+                    logger.error(f"Error handling message: {e}")
         except Exception as e:
             logger.error(f"Error receiving messages: {e}")
             self._handle_disconnect()
@@ -245,17 +249,17 @@ class KioskClient(QMainWindow):
 
     def _update_session_time(self):
         if self.state == SessionState.PAUSED:
-            self.toolbar.session_label.setText(f'Status: Paused ({self.client_ip})')
+            self.toolbar.update_session_time(f'Status: Paused ({self.client_ip})')
         elif self.state == SessionState.ACTIVE and self.remaining_time is not None:
             hours = self.remaining_time // 3600
             minutes = (self.remaining_time % 3600) // 60
             seconds = self.remaining_time % 60
-            self.toolbar.session_label.setText(f'Status: Connected ({self.client_ip}) | Time left: {hours:02d}:{minutes:02d}:{seconds:02d}')
+            self.toolbar.update_session_time(f'Time left: {hours:02d}:{minutes:02d}:{seconds:02d}')
             self.remaining_time -= 1
             if self.remaining_time < 0:
                 self._end_session()
         else:
-            self.toolbar.session_label.setText(f'Status: Connected ({self.client_ip}) | No session')
+            self.toolbar.update_session_time(f'No session')
 
     def _end_session(self):
         if self.session_timer:
