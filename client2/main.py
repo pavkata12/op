@@ -10,6 +10,12 @@ from PySide6.QtGui import QIcon, QAction
 import qasync
 import socket
 from explorer_watcher import start_watcher
+import ctypes
+import win32con
+import win32api
+import win32gui
+import win32process
+import threading
 
 # Overlay timer widget
 class TimerOverlay(QWidget):
@@ -62,9 +68,64 @@ class BlankScreen(QWidget):
         self.hide()
     def set_status(self, status):
         self.status_label.setText(status)
+    def closeEvent(self, event):
+        # Block Alt+F4 when blank is active
+        if self.isVisible():
+            event.ignore()
+    def keyPressEvent(self, event):
+        # Block Alt+F4
+        if event.key() == Qt.Key_F4 and (event.modifiers() & Qt.AltModifier):
+            return
+        super().keyPressEvent(event)
 
 SERVER_CONFIG = 'client2_config.json'
 DEFAULT_SERVER_PORT = 8765
+
+# --- Keyboard hook for blocking Windows key ---
+user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
+WH_KEYBOARD_LL = 13
+WM_KEYDOWN = 0x0100
+WM_SYSKEYDOWN = 0x0104
+VK_LWIN = 0x5B
+VK_RWIN = 0x5C
+VK_ESCAPE = 0x1B
+VK_F4 = 0x73
+VK_MENU = 0x12  # Alt
+
+class KeyboardBlocker:
+    def __init__(self):
+        self.hooked = None
+        self.enabled = False
+    def install(self):
+        if self.hooked:
+            return
+        CMPFUNC = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))
+        def low_level_keyboard_proc(nCode, wParam, lParam):
+            if nCode == 0:
+                vk_code = ctypes.cast(lParam, ctypes.POINTER(ctypes.c_ulong * 6))[0][0]
+                # Block Windows keys and Ctrl+Esc
+                if vk_code in (VK_LWIN, VK_RWIN):
+                    return 1
+                if vk_code == VK_ESCAPE and (win32api.GetAsyncKeyState(win32con.VK_CONTROL) & 0x8000):
+                    return 1
+            return user32.CallNextHookEx(self.hooked, nCode, wParam, lParam)
+        self.pointer = CMPFUNC(low_level_keyboard_proc)
+        self.hooked = user32.SetWindowsHookExA(WH_KEYBOARD_LL, self.pointer, kernel32.GetModuleHandleW(None), 0)
+        self.enabled = True
+        # Keep message loop in a thread
+        def msg_loop():
+            while self.enabled:
+                user32.PeekMessageW(None, 0, 0, 0, 0)
+        self.thread = threading.Thread(target=msg_loop, daemon=True)
+        self.thread.start()
+    def uninstall(self):
+        if self.hooked:
+            user32.UnhookWindowsHookEx(self.hooked)
+            self.hooked = None
+            self.enabled = False
+
+keyboard_blocker = KeyboardBlocker()
 
 class Client2App:
     def __init__(self):
@@ -182,10 +243,12 @@ class Client2App:
     def _show_blank(self):
         self.overlay.hide()
         self.blank.show_blank(status=f'Status: {self.connection_status}')
+        keyboard_blocker.install()
     def _show_overlay(self):
         self.blank.hide_blank()
         self.overlay.show()
         self.overlay.raise_()
+        keyboard_blocker.uninstall()
     def start_session(self, duration):
         self.session_active = True
         self.remaining_time = duration
