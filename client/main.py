@@ -10,6 +10,7 @@ import psutil
 import win32gui
 import win32con
 import win32process
+import socket
 from datetime import datetime
 from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QInputDialog
 from PySide6.QtCore import Qt, QTimer, QRect
@@ -25,7 +26,6 @@ from shared.protocol import (
 from .kiosk_desktop import KioskDesktop
 from .fake_toolbar import FakeToolbar
 import qasync
-import socket
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'client_config.json')
 
@@ -67,7 +67,9 @@ class KioskClient(QMainWindow):
         self.showFullScreen()
         self.desktop = KioskDesktop(self)
         self.toolbar = FakeToolbar(self)
-        self.blank_desktop = BlankDesktop()
+        self.blank_desktop = QMainWindow()
+        self.blank_desktop.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.blank_desktop.setStyleSheet("background-color: #111;")
         self.blank_desktop.hide()
         self.desktop.hide()
         self.toolbar.hide()
@@ -123,13 +125,11 @@ class KioskClient(QMainWindow):
                     self.server_ip,
                     DEFAULT_SERVER_PORT
                 )
-                logger.info(f"Connected to server at {self.server_ip}:{DEFAULT_SERVER_PORT}")
                 self.connection_status = 'Connected'
                 self.toolbar.session_label.setText(f'Status: Connected ({self.client_ip})')
-                # Send client IP to server as first message
-                hello_msg = Message(type='client_hello', client_id=self.client_id, timestamp=None)
-                hello_msg.client_ip = self.client_ip
-                self.writer.write(json.dumps({**asdict(hello_msg), 'client_ip': self.client_ip}).encode() + b'\n')
+                # Send handshake with client_ip
+                hello = {'client_ip': self.client_ip}
+                self.writer.write(json.dumps(hello).encode() + b'\n')
                 await self.writer.drain()
                 self.heartbeat_timer.start(HEARTBEAT_INTERVAL * 1000)
                 asyncio.create_task(self._receive_messages())
