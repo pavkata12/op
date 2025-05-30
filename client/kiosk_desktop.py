@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from shared.constants import ICON_SIZE, GRID_SPACING
+from functools import partial
 
 class AppIcon(QToolButton):
     """Icon button for launching applications."""
@@ -64,6 +65,12 @@ class KioskDesktop(QWidget):
         # Create main layout
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Add timer banner
+        self.timer_label = QLabel("")
+        self.timer_label.setAlignment(Qt.AlignCenter)
+        self.timer_label.setStyleSheet("background: rgba(0,0,0,0.7); color: white; font-size: 40px; border-radius: 18px; padding: 24px 0px; margin-bottom: 18px;")
+        main_layout.addWidget(self.timer_label)
         
         # Create scroll area
         scroll_area = QScrollArea()
@@ -128,10 +135,7 @@ class KioskDesktop(QWidget):
                 app['icon_path'],
                 app['path']
             )
-            icon.clicked.connect(
-                lambda checked, name=app['name'], path=app['path']:
-                self._handle_app_click(name, path)
-            )
+            icon.clicked.connect(partial(self._handle_app_click, app['name'], app['path']))
             
             self.grid_layout.addWidget(icon, row, col)
             self.app_icons[app['name']] = icon
@@ -164,3 +168,6 @@ class KioskDesktop(QWidget):
                 if col >= max_cols:
                     col = 0
                     row += 1 
+
+    def update_session_time(self, text: str):
+        self.timer_label.setText(text) 

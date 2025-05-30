@@ -111,7 +111,7 @@ class KioskClient(QMainWindow):
         self.toolbar.app_restored.connect(self._handle_app_restored)
         self.toolbar.app_closed.connect(self._handle_app_closed)
         self.connection_status = 'Disconnected'
-        self.toolbar.update_session_time('Status: Disconnected')
+        self.desktop.update_session_time('Status: Disconnected')
         QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
         self._show_blank()
 
@@ -154,7 +154,7 @@ class KioskClient(QMainWindow):
                     DEFAULT_SERVER_PORT
                 )
                 self.connection_status = 'Connected'
-                self.toolbar.update_session_time(f'Status: Connected ({self.client_ip})')
+                self.desktop.update_session_time(f'Status: Connected ({self.client_ip})')
                 # Send handshake with client_ip
                 hello = {'client_ip': self.client_ip}
                 self.writer.write(json.dumps(hello).encode() + b'\n')
@@ -165,7 +165,7 @@ class KioskClient(QMainWindow):
             except Exception as e:
                 logger.error(f"Connection attempt {attempt + 1} failed: {e}")
                 self.connection_status = 'Disconnected'
-                self.toolbar.update_session_time('Status: Disconnected')
+                self.desktop.update_session_time('Status: Disconnected')
                 if attempt < RECONNECT_ATTEMPTS - 1:
                     await asyncio.sleep(RECONNECT_DELAY)
         QMessageBox.critical(
@@ -228,7 +228,7 @@ class KioskClient(QMainWindow):
     def _handle_disconnect(self):
         self.heartbeat_timer.stop()
         self.connection_status = 'Disconnected'
-        self.toolbar.update_session_time('Status: Disconnected')
+        self.desktop.update_session_time('Status: Disconnected')
         QMessageBox.warning(
             self,
             "Connection Lost",
@@ -252,17 +252,17 @@ class KioskClient(QMainWindow):
 
     def _update_session_time(self):
         if self.state == SessionState.PAUSED:
-            self.toolbar.update_session_time(f'Status: Paused ({self.client_ip})')
+            self.desktop.update_session_time(f'Status: Paused ({self.client_ip})')
         elif self.state == SessionState.ACTIVE and self.remaining_time is not None:
             hours = self.remaining_time // 3600
             minutes = (self.remaining_time % 3600) // 60
             seconds = self.remaining_time % 60
-            self.toolbar.update_session_time(f'Time left: {hours:02d}:{minutes:02d}:{seconds:02d}')
+            self.desktop.update_session_time(f'Time left: {hours:02d}:{minutes:02d}:{seconds:02d}')
             self.remaining_time -= 1
             if self.remaining_time < 0:
                 self._end_session()
         else:
-            self.toolbar.update_session_time(f'No session')
+            self.desktop.update_session_time(f'No session')
 
     def _end_session(self):
         if self.session_timer:
