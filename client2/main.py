@@ -1,0 +1,189 @@
+import sys
+import os
+import asyncio
+import logging
+import json
+from datetime import datetime
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
+from PySide6.QtCore import Qt, QTimer
+import qasync
+import socket
+from explorer_watcher import start_watcher
+
+# Overlay timer widget
+class TimerOverlay(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(
+            Qt.FramelessWindowHint |
+            Qt.WindowStaysOnTopHint |
+            Qt.Tool
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setWindowTitle('Session Timer')
+        self.label = QLabel('', self)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setStyleSheet(
+            'background: rgba(0,0,0,0.7); color: white; font-size: 60px; border-radius: 24px; padding: 40px 0px;'
+        )
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.label)
+        self.resize(800, 160)
+        self.move(200, 40)  # Top center-ish
+    def set_time(self, text):
+        self.label.setText(text)
+
+# Blank lock screen
+class BlankScreen(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setStyleSheet('background-color: #111;')
+        self.label = QLabel('Session not active', self)
+        self.label.setStyleSheet('color: white; font-size: 36px;')
+        self.label.setAlignment(Qt.AlignCenter)
+        self.status_label = QLabel('', self)
+        self.status_label.setStyleSheet('color: #aaa; font-size: 22px; margin-top: 24px;')
+        self.status_label.setAlignment(Qt.AlignCenter)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.label)
+        layout.addWidget(self.status_label)
+    def show_blank(self, msg='Session not active', status=''):
+        self.label.setText(msg)
+        self.status_label.setText(status)
+        self.showFullScreen()
+        self.raise_()
+    def hide_blank(self):
+        self.hide()
+    def set_status(self, status):
+        self.status_label.setText(status)
+
+SERVER_CONFIG = 'client2_config.json'
+DEFAULT_SERVER_PORT = 8765
+
+class Client2App:
+    def __init__(self):
+        self.app = QApplication(sys.argv)
+        self.loop = qasync.QEventLoop(self.app)
+        asyncio.set_event_loop(self.loop)
+        self.overlay = TimerOverlay()
+        self.blank = BlankScreen()
+        self.session_active = False
+        self.remaining_time = 0
+        self.session_timer = QTimer()
+        self.session_timer.timeout.connect(self._tick)
+        self.connection_status = 'Disconnected'
+        start_watcher()  # Start closing explorer folders
+        self._show_blank()
+        QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
+    def _get_server_ip(self):
+        if os.path.exists(SERVER_CONFIG):
+            with open(SERVER_CONFIG, 'r') as f:
+                data = json.load(f)
+                return data.get('server_ip')
+        return None
+    def _save_server_ip(self, ip):
+        with open(SERVER_CONFIG, 'w') as f:
+            json.dump({'server_ip': ip}, f)
+    async def _connect_to_server(self):
+        server_ip = self._get_server_ip()
+        if not server_ip:
+            from PySide6.QtWidgets import QInputDialog, QMessageBox
+            ip, ok = QInputDialog.getText(None, "Server IP", "Enter the server IP address:")
+            if not ok or not ip:
+                QMessageBox.critical(None, "No IP Entered", "No server IP entered. Exiting.")
+                sys.exit(1)
+            self._save_server_ip(ip)
+            server_ip = ip
+        self.set_connection_status('Connecting...')
+        try:
+            reader, writer = await asyncio.open_connection(server_ip, DEFAULT_SERVER_PORT)
+            self.set_connection_status('Connected')
+            # Send handshake
+            client_ip = self._get_local_ip(server_ip)
+            hello = {'client_ip': client_ip}
+            writer.write(json.dumps(hello).encode() + b'\n')
+            await writer.drain()
+            asyncio.create_task(self._receive_messages(reader, writer))
+        except Exception as e:
+            self.set_connection_status('Disconnected')
+            QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
+    def _get_local_ip(self, server_ip):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect((server_ip, DEFAULT_SERVER_PORT))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return 'Unknown'
+    async def _receive_messages(self, reader, writer):
+        while True:
+            try:
+                data = await reader.readline()
+                if not data:
+                    break
+                msg = data.decode().strip()
+                if not msg:
+                    continue
+                try:
+                    msg_dict = json.loads(msg)
+                except Exception:
+                    continue
+                msg_type = msg_dict.get('type')
+                if msg_type == 'session_start':
+                    duration = msg_dict.get('duration', 0)
+                    self.start_session(duration)
+                elif msg_type == 'session_end':
+                    self.end_session()
+                elif msg_type == 'heartbeat':
+                    pass  # Optionally handle
+            except Exception:
+                break
+        self.set_connection_status('Disconnected')
+        QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
+    def _show_blank(self):
+        self.overlay.hide()
+        self.blank.show_blank(status=f'Status: {self.connection_status}')
+    def _show_overlay(self):
+        self.blank.hide_blank()
+        self.overlay.show()
+        self.overlay.raise_()
+    def start_session(self, duration):
+        self.session_active = True
+        self.remaining_time = duration
+        self._show_overlay()
+        self._update_timer()
+        self.session_timer.start(1000)
+    def end_session(self):
+        self.session_active = False
+        self.session_timer.stop()
+        self._show_blank()
+    def _tick(self):
+        if self.session_active:
+            self.remaining_time -= 1
+            if self.remaining_time <= 0:
+                self.end_session()
+            else:
+                self._update_timer()
+    def _update_timer(self):
+        h = self.remaining_time // 3600
+        m = (self.remaining_time % 3600) // 60
+        s = self.remaining_time % 60
+        self.overlay.set_time(f'Time left: {h:02d}:{m:02d}:{s:02d}')
+    def set_connection_status(self, status):
+        self.connection_status = status
+        self.blank.set_status(f'Status: {self.connection_status}')
+    def run(self):
+        with self.loop:
+            self.loop.run_forever()
+
+def main():
+    c = Client2App()
+    # For demo: start a 2 min session after 2 sec
+    QTimer.singleShot(2000, lambda: c.start_session(120))
+    c.run()
+
+if __name__ == '__main__':
+    main() 
