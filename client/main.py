@@ -12,7 +12,7 @@ import win32con
 import win32process
 import socket
 from datetime import datetime
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QInputDialog
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QInputDialog, QLabel, QVBoxLayout, QWidget
 from PySide6.QtCore import Qt, QTimer, QRect
 from shared.constants import (
     DEFAULT_SERVER_PORT,
@@ -81,6 +81,14 @@ class KioskClient(QMainWindow):
         self.blank_desktop = QMainWindow()
         self.blank_desktop.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.blank_desktop.setStyleSheet("background-color: #111;")
+        self.blank_label = QLabel("Waiting for session to start...", self.blank_desktop)
+        self.blank_label.setStyleSheet("color: white; font-size: 24px;")
+        self.blank_label.setAlignment(Qt.AlignCenter)
+        layout = QVBoxLayout()
+        layout.addWidget(self.blank_label)
+        container = QWidget()
+        container.setLayout(layout)
+        self.blank_desktop.setCentralWidget(container)
         self.blank_desktop.hide()
         self.desktop.hide()
         self.toolbar.hide()
@@ -109,7 +117,12 @@ class KioskClient(QMainWindow):
     def _show_blank(self):
         self.desktop.hide()
         self.toolbar.hide()
-        self.blank_desktop.showFullScreen()
+        msg = "Waiting for session to start..." if self.connection_status == 'Connected' else "Not connected to server"
+        self.blank_label.setText(msg)
+        if not args.dev:
+            self.blank_desktop.showFullScreen()
+        else:
+            self.blank_desktop.show()
         self.blank_desktop.raise_()
 
     def _show_kiosk(self):
