@@ -12,6 +12,9 @@ from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from shared.constants import ICON_SIZE, GRID_SPACING
 from functools import partial
+import json
+
+ALLOWED_APPS_FILE = 'allowed_apps.json'
 
 class AppIcon(QToolButton):
     """Icon button for launching applications."""
@@ -117,18 +120,22 @@ class KioskDesktop(QWidget):
         self.app_icons: Dict[str, AppIcon] = {}
 
     def set_allowed_apps(self, apps: List[Dict[str, str]]):
-        """Set the list of allowed applications."""
+        """Set the list of allowed applications and save to disk."""
+        # Save to disk
+        try:
+            with open(ALLOWED_APPS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(apps, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Error saving allowed apps: {e}")
         # Clear existing icons
         for icon in self.app_icons.values():
             self.grid_layout.removeWidget(icon)
             icon.deleteLater()
         self.app_icons.clear()
-        
         # Add new icons
         row = 0
         col = 0
         max_cols = self.width() // (ICON_SIZE + 40 + GRID_SPACING)
-        
         for app in apps:
             icon = AppIcon(
                 app['name'],
@@ -136,22 +143,27 @@ class KioskDesktop(QWidget):
                 app['path']
             )
             icon.clicked.connect(partial(self._handle_app_click, app['name'], app['path']))
-            
             self.grid_layout.addWidget(icon, row, col)
             self.app_icons[app['name']] = icon
-            
             col += 1
             if col >= max_cols:
                 col = 0
                 row += 1
 
+    def load_allowed_apps(self):
+        try:
+            with open(ALLOWED_APPS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return []
+
     def _handle_app_click(self, app_name: str, app_path: str):
         """Handle app icon click."""
         try:
-            subprocess.Popen([app_path])
+            subprocess.Popen(app_path, shell=True)
             self.app_launched.emit(app_name, app_path)
         except Exception as e:
-            print(f"Error launching {app_name}: {e}")
+            print(f"Error launching {app_name} at {app_path}: {e}")
 
     def resizeEvent(self, event):
         """Handle window resize event."""
