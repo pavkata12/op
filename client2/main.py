@@ -347,6 +347,7 @@ class Client2App:
         self.session_active = False
         self.session_timer.stop()
         self._show_blank()
+        QTimer.singleShot(500, lambda: asyncio.create_task(self._connect_to_server()))
     def _tick(self):
         if self.session_active:
             self.remaining_time -= 1
