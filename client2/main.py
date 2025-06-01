@@ -131,27 +131,31 @@ class LoginDialog(QDialog):
         self.setWindowTitle('Login')
         self.setFixedSize(300, 150)
         layout = QVBoxLayout(self)
-        
-        # Username
         self.username_input = QLineEdit()
         self.username_input.setPlaceholderText('Username')
         layout.addWidget(self.username_input)
-        
-        # Password
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText('Password')
         self.password_input.setEchoMode(QLineEdit.Password)
         layout.addWidget(self.password_input)
-        
-        # Login button
         self.login_btn = QPushButton('Login')
-        self.login_btn.clicked.connect(self.accept)
+        self.login_btn.clicked.connect(self.try_login)
         layout.addWidget(self.login_btn)
-        
-        self.setWindowFlags(Qt.WindowStaysOnTopHint)
-        
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint)
+        self.accepted = False
+    def try_login(self):
+        username = self.username_input.text().strip()
+        password = self.password_input.text().strip()
+        if not username or not password:
+            QMessageBox.warning(self, 'Error', 'Please enter both username and password')
+            return
+        self.accepted = True
+        self.accept()
     def get_credentials(self):
         return self.username_input.text(), self.password_input.text()
+    def closeEvent(self, event):
+        # Prevent closing the dialog with X
+        event.ignore()
 
 keyboard_blocker = KeyboardBlocker()
 
@@ -226,27 +230,50 @@ class Client2App:
             reader, writer = await asyncio.open_connection(server_ip, DEFAULT_SERVER_PORT)
             self.set_connection_status('Connected')
             
-            # Show login dialog
-            login_dialog = LoginDialog()
-            if login_dialog.exec() != QDialog.Accepted:
-                writer.close()
-                await writer.wait_closed()
-                sys.exit(0)
-                
-            username, password = login_dialog.get_credentials()
-            
-            # Send authentication request
-            auth_data = {
-                'type': 'auth',
-                'username': username,
-                'password': password
-            }
-            writer.write(json.dumps(auth_data).encode() + b'\n')
-            await writer.drain()
-            
-            # Start message receiver
-            asyncio.create_task(self._receive_messages(reader, writer))
-            
+            while True:
+                login_dialog = LoginDialog()
+                if login_dialog.exec() != QDialog.Accepted or not login_dialog.accepted:
+                    # User tried to close dialog or pressed login without valid credentials
+                    continue
+                username, password = login_dialog.get_credentials()
+                if username == 'admin' and password == 'admin123':
+                    # Exit client for admin
+                    sys.exit(0)
+                # Send authentication request
+                auth_data = {
+                    'type': 'auth',
+                    'username': username,
+                    'password': password
+                }
+                writer.write(json.dumps(auth_data).encode() + b'\n')
+                await writer.drain()
+                # Wait for server response
+                data = await reader.readline()
+                if not data:
+                    break
+                msg = data.decode().strip()
+                if not msg:
+                    continue
+                try:
+                    msg_dict = json.loads(msg)
+                except Exception:
+                    continue
+                msg_type = msg_dict.get('type')
+                if msg_type == 'auth_success':
+                    minutes = msg_dict.get('minutes', 0)
+                    self.set_connection_status(f'Connected (Available time: {minutes} minutes)')
+                    # Start message receiver
+                    asyncio.create_task(self._receive_messages(reader, writer))
+                    return
+                elif msg_type == 'auth_error':
+                    error_msg = msg_dict.get('message', 'Authentication failed')
+                    QMessageBox.critical(None, "Authentication Error", error_msg)
+                    continue
+                elif msg_type == 'admin_auth_success':
+                    QMessageBox.information(None, "Admin Access", "Admin access granted. Closing client.")
+                    writer.close()
+                    await writer.wait_closed()
+                    sys.exit(0)
         except Exception as e:
             self.set_connection_status('Disconnected')
             QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
@@ -290,7 +317,7 @@ class Client2App:
                 elif msg_type == 'session_started':
                     duration = msg_dict.get('duration', 0)
                     self.start_session(duration)
-                elif msg_type == 'session_ended':
+                elif msg_type == 'session_end':
                     self.end_session()
                 elif msg_type == 'session_error':
                     error_msg = msg_dict.get('message', 'Session error')
@@ -348,8 +375,6 @@ class Client2App:
 
 def main():
     c = Client2App()
-    # For demo: start a 2 min session after 2 sec
-    QTimer.singleShot(2000, lambda: c.start_session(120))
     c.run()
 
 if __name__ == '__main__':
