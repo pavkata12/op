@@ -4,7 +4,7 @@ import asyncio
 import logging
 import json
 from datetime import datetime
-from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QPushButton
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSystemTrayIcon, QMenu, QPushButton, QLineEdit, QMessageBox, QDialog
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QAction
 import qasync
@@ -125,6 +125,34 @@ class KeyboardBlocker:
             self.hooked = None
             self.enabled = False
 
+class LoginDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Login')
+        self.setFixedSize(300, 150)
+        layout = QVBoxLayout(self)
+        
+        # Username
+        self.username_input = QLineEdit()
+        self.username_input.setPlaceholderText('Username')
+        layout.addWidget(self.username_input)
+        
+        # Password
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText('Password')
+        self.password_input.setEchoMode(QLineEdit.Password)
+        layout.addWidget(self.password_input)
+        
+        # Login button
+        self.login_btn = QPushButton('Login')
+        self.login_btn.clicked.connect(self.accept)
+        layout.addWidget(self.login_btn)
+        
+        self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        
+    def get_credentials(self):
+        return self.username_input.text(), self.password_input.text()
+
 keyboard_blocker = KeyboardBlocker()
 
 class Client2App:
@@ -197,12 +225,28 @@ class Client2App:
         try:
             reader, writer = await asyncio.open_connection(server_ip, DEFAULT_SERVER_PORT)
             self.set_connection_status('Connected')
-            # Send handshake
-            client_ip = self._get_local_ip(server_ip)
-            hello = {'client_ip': client_ip}
-            writer.write(json.dumps(hello).encode() + b'\n')
+            
+            # Show login dialog
+            login_dialog = LoginDialog()
+            if login_dialog.exec() != QDialog.Accepted:
+                writer.close()
+                await writer.wait_closed()
+                sys.exit(0)
+                
+            username, password = login_dialog.get_credentials()
+            
+            # Send authentication request
+            auth_data = {
+                'type': 'auth',
+                'username': username,
+                'password': password
+            }
+            writer.write(json.dumps(auth_data).encode() + b'\n')
             await writer.drain()
+            
+            # Start message receiver
             asyncio.create_task(self._receive_messages(reader, writer))
+            
         except Exception as e:
             self.set_connection_status('Disconnected')
             QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
@@ -229,13 +273,28 @@ class Client2App:
                 except Exception:
                     continue
                 msg_type = msg_dict.get('type')
-                if msg_type == 'session_start':
+                if msg_type == 'auth_success':
+                    minutes = msg_dict.get('minutes', 0)
+                    self.set_connection_status(f'Connected (Available time: {minutes} minutes)')
+                elif msg_type == 'auth_error':
+                    error_msg = msg_dict.get('message', 'Authentication failed')
+                    QMessageBox.critical(None, "Authentication Error", error_msg)
+                    writer.close()
+                    await writer.wait_closed()
+                    sys.exit(1)
+                elif msg_type == 'admin_auth_success':
+                    QMessageBox.information(None, "Admin Access", "Admin access granted. Closing client.")
+                    writer.close()
+                    await writer.wait_closed()
+                    sys.exit(0)
+                elif msg_type == 'session_started':
                     duration = msg_dict.get('duration', 0)
                     self.start_session(duration)
-                elif msg_type == 'session_end':
+                elif msg_type == 'session_ended':
                     self.end_session()
-                elif msg_type == 'heartbeat':
-                    pass  # Optionally handle
+                elif msg_type == 'session_error':
+                    error_msg = msg_dict.get('message', 'Session error')
+                    QMessageBox.warning(None, "Session Error", error_msg)
             except Exception:
                 break
         self.set_connection_status('Disconnected')
