@@ -16,7 +16,6 @@ import win32api
 import win32gui
 import win32process
 import threading
-from qasync import asyncSlot
 
 # Overlay timer widget
 class TimerOverlay(QWidget):
@@ -176,11 +175,9 @@ class Client2App:
         self._init_tray()
         self.overlay.min_btn.clicked.connect(self.overlay.hide)
         self._show_blank()
-        QTimer.singleShot(0, self.reconnect)
+        QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
         self._notified_5min = False
         self._notified_1min = False
-        self.receiver_task = None  # Track the message receiver task
-        self.reconnecting = False
     def _init_tray(self):
         icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
         self.tray = QSystemTrayIcon(QIcon(icon_path))
@@ -218,15 +215,6 @@ class Client2App:
     def _save_server_ip(self, ip):
         with open(SERVER_CONFIG, 'w') as f:
             json.dump({'server_ip': ip}, f)
-    @asyncSlot()
-    async def reconnect(self):
-        if self.reconnecting:
-            return
-        self.reconnecting = True
-        try:
-            await self._connect_to_server()
-        finally:
-            self.reconnecting = False
     async def _connect_to_server(self):
         server_ip = self._get_server_ip()
         if not server_ip:
@@ -240,12 +228,9 @@ class Client2App:
         self.set_connection_status('Connecting...')
         try:
             reader, writer = await asyncio.open_connection(server_ip, DEFAULT_SERVER_PORT)
-            self.writer = writer  # Store writer for later closing
             self.set_connection_status('Connected')
-            # Cancel previous receiver if any
-            if self.receiver_task is not None:
-                self.receiver_task.cancel()
-            self.receiver_task = asyncio.create_task(self._receive_messages(reader, writer))
+            # Start message receiver immediately
+            asyncio.create_task(self._receive_messages(reader, writer))
             while True:
                 login_dialog = LoginDialog()
                 if login_dialog.exec() != QDialog.Accepted or not login_dialog.accepted:
@@ -260,10 +245,11 @@ class Client2App:
                 }
                 writer.write(json.dumps(auth_data).encode() + b'\n')
                 await writer.drain()
+                # Do not wait for a response here; let the message receiver handle it
                 break
         except Exception as e:
             self.set_connection_status('Disconnected')
-            QTimer.singleShot(3000, self.reconnect)
+            QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
     def _get_local_ip(self, server_ip):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -312,7 +298,7 @@ class Client2App:
             except Exception:
                 break
         self.set_connection_status('Disconnected')
-        QTimer.singleShot(3000, self.reconnect)
+        QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
     def _show_blank(self):
         self.overlay.hide()
         self.blank.show_blank(status=f'Status: {self.connection_status}')
@@ -337,16 +323,10 @@ class Client2App:
         self._notified_5min = False
         self._notified_1min = False
         self._show_blank()
+        # Reset connection status
         self.set_connection_status('Disconnected')
-        if self.receiver_task is not None:
-            self.receiver_task.cancel()
-            self.receiver_task = None
-        try:
-            self.writer.close()
-            asyncio.create_task(self.writer.wait_closed())
-        except Exception:
-            pass
-        QTimer.singleShot(300, self.reconnect)
+        # Wait a bit before reconnecting to avoid race conditions
+        QTimer.singleShot(1000, lambda: asyncio.create_task(self._connect_to_server()))
     def _tick(self):
         if self.session_active:
             self.remaining_time -= 1
