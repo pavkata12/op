@@ -16,6 +16,7 @@ import win32api
 import win32gui
 import win32process
 import threading
+from qasync import asyncSlot
 
 # Overlay timer widget
 class TimerOverlay(QWidget):
@@ -175,7 +176,7 @@ class Client2App:
         self._init_tray()
         self.overlay.min_btn.clicked.connect(self.overlay.hide)
         self._show_blank()
-        QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
+        QTimer.singleShot(0, self.reconnect)
         self._notified_5min = False
         self._notified_1min = False
         self.receiver_task = None  # Track the message receiver task
@@ -216,6 +217,9 @@ class Client2App:
     def _save_server_ip(self, ip):
         with open(SERVER_CONFIG, 'w') as f:
             json.dump({'server_ip': ip}, f)
+    @asyncSlot()
+    async def reconnect(self):
+        await self._connect_to_server()
     async def _connect_to_server(self):
         server_ip = self._get_server_ip()
         if not server_ip:
@@ -252,7 +256,7 @@ class Client2App:
                 break
         except Exception as e:
             self.set_connection_status('Disconnected')
-            QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
+            QTimer.singleShot(3000, self.reconnect)
     def _get_local_ip(self, server_ip):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -301,7 +305,7 @@ class Client2App:
             except Exception:
                 break
         self.set_connection_status('Disconnected')
-        QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
+        QTimer.singleShot(3000, self.reconnect)
     def _show_blank(self):
         self.overlay.hide()
         self.blank.show_blank(status=f'Status: {self.connection_status}')
@@ -327,7 +331,6 @@ class Client2App:
         self._notified_1min = False
         self._show_blank()
         self.set_connection_status('Disconnected')
-        # Cancel the message receiver task if running
         if self.receiver_task is not None:
             self.receiver_task.cancel()
             self.receiver_task = None
@@ -336,7 +339,7 @@ class Client2App:
             asyncio.create_task(self.writer.wait_closed())
         except Exception:
             pass
-        QTimer.singleShot(300, lambda: asyncio.create_task(self._connect_to_server()))
+        QTimer.singleShot(300, self.reconnect)
     def _tick(self):
         if self.session_active:
             self.remaining_time -= 1
