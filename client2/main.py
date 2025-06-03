@@ -245,6 +245,10 @@ class Client2App:
             # Cancel previous receiver if any
             if self.receiver_task is not None:
                 self.receiver_task.cancel()
+                try:
+                    await self.receiver_task
+                except Exception:
+                    pass
             self.receiver_task = asyncio.create_task(self._receive_messages(reader, writer))
             while True:
                 login_dialog = LoginDialog()
