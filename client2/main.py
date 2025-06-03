@@ -180,6 +180,7 @@ class Client2App:
         self._notified_5min = False
         self._notified_1min = False
         self.receiver_task = None  # Track the message receiver task
+        self.reconnecting = False
     def _init_tray(self):
         icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
         self.tray = QSystemTrayIcon(QIcon(icon_path))
@@ -219,7 +220,13 @@ class Client2App:
             json.dump({'server_ip': ip}, f)
     @asyncSlot()
     async def reconnect(self):
-        await self._connect_to_server()
+        if self.reconnecting:
+            return
+        self.reconnecting = True
+        try:
+            await self._connect_to_server()
+        finally:
+            self.reconnecting = False
     async def _connect_to_server(self):
         server_ip = self._get_server_ip()
         if not server_ip:
