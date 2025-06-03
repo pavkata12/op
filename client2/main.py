@@ -323,13 +323,12 @@ class Client2App:
         self._notified_1min = False
         self._show_blank()
         self.set_connection_status('Disconnected')
-        # Close the connection to the server if possible
         try:
             self.writer.close()
             asyncio.create_task(self.writer.wait_closed())
         except Exception:
             pass
-        QTimer.singleShot(1000, lambda: asyncio.create_task(self._connect_to_server()))
+        QTimer.singleShot(300, lambda: asyncio.create_task(self._connect_to_server()))
     def _tick(self):
         if self.session_active:
             self.remaining_time -= 1
