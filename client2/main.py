@@ -221,7 +221,6 @@ class Client2App:
         while True:
             await self.reconnect()
             await asyncio.sleep(3)
-    @asyncSlot()
     async def reconnect(self):
         if self.reconnecting:
             return
@@ -259,7 +258,8 @@ class Client2App:
                     continue
                 username, password = login_dialog.get_credentials()
                 if username == 'admin' and password == 'admin123':
-                    sys.exit(0)
+                    self.app.quit()
+                    return
                 auth_data = {
                     'type': 'auth',
                     'username': username,
@@ -300,13 +300,15 @@ class Client2App:
                     error_msg = msg_dict.get('message', 'Authentication failed')
                     QMessageBox.critical(None, "Authentication Error", error_msg)
                     writer.close()
-                    await writer.wait_closed()
-                    sys.exit(1)
+                    self.loop.create_task(writer.wait_closed())
+                    self.app.quit()
+                    return
                 elif msg_type == 'admin_auth_success':
                     QMessageBox.information(None, "Admin Access", "Admin access granted. Closing client.")
                     writer.close()
-                    await writer.wait_closed()
-                    sys.exit(0)
+                    self.loop.create_task(writer.wait_closed())
+                    self.app.quit()
+                    return
                 elif msg_type == 'session_started':
                     duration = msg_dict.get('duration', 0)
                     self.start_session(duration)
