@@ -176,7 +176,6 @@ class Client2App:
         self._init_tray()
         self.overlay.min_btn.clicked.connect(self.overlay.hide)
         self._show_blank()
-        QTimer.singleShot(0, lambda: asyncio.create_task(self.reconnect_loop()))
         self._notified_5min = False
         self._notified_1min = False
         self.receiver_task = None  # Track the message receiver task
@@ -376,6 +375,7 @@ class Client2App:
         self.blank.set_status(f'Status: {self.connection_status}')
     def run(self):
         with self.loop:
+            self.loop.create_task(self.reconnect_loop())
             self.loop.run_forever()
 
 def main():
