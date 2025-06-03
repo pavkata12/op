@@ -176,7 +176,7 @@ class Client2App:
         self._init_tray()
         self.overlay.min_btn.clicked.connect(self.overlay.hide)
         self._show_blank()
-        QTimer.singleShot(0, self.reconnect)
+        QTimer.singleShot(0, lambda: asyncio.create_task(self.reconnect_loop()))
         self._notified_5min = False
         self._notified_1min = False
         self.receiver_task = None  # Track the message receiver task
@@ -218,6 +218,10 @@ class Client2App:
     def _save_server_ip(self, ip):
         with open(SERVER_CONFIG, 'w') as f:
             json.dump({'server_ip': ip}, f)
+    async def reconnect_loop(self):
+        while True:
+            await self.reconnect()
+            await asyncio.sleep(3)
     @asyncSlot()
     async def reconnect(self):
         if self.reconnecting:
@@ -267,7 +271,6 @@ class Client2App:
                 break
         except Exception as e:
             self.set_connection_status('Disconnected')
-            QTimer.singleShot(3000, self.reconnect)
     def _get_local_ip(self, server_ip):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -316,7 +319,6 @@ class Client2App:
             except Exception:
                 break
         self.set_connection_status('Disconnected')
-        QTimer.singleShot(3000, self.reconnect)
     def _show_blank(self):
         self.overlay.hide()
         self.blank.show_blank(status=f'Status: {self.connection_status}')
@@ -350,7 +352,6 @@ class Client2App:
             asyncio.create_task(self.writer.wait_closed())
         except Exception:
             pass
-        QTimer.singleShot(300, self.reconnect)
     def _tick(self):
         if self.session_active:
             self.remaining_time -= 1
