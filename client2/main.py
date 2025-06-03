@@ -178,6 +178,7 @@ class Client2App:
         QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
         self._notified_5min = False
         self._notified_1min = False
+        self.receiver_task = None  # Track the message receiver task
     def _init_tray(self):
         icon_path = os.path.join(os.path.dirname(__file__), "icon.png")
         self.tray = QSystemTrayIcon(QIcon(icon_path))
@@ -230,7 +231,10 @@ class Client2App:
             reader, writer = await asyncio.open_connection(server_ip, DEFAULT_SERVER_PORT)
             self.writer = writer  # Store writer for later closing
             self.set_connection_status('Connected')
-            asyncio.create_task(self._receive_messages(reader, writer))
+            # Cancel previous receiver if any
+            if self.receiver_task is not None:
+                self.receiver_task.cancel()
+            self.receiver_task = asyncio.create_task(self._receive_messages(reader, writer))
             while True:
                 login_dialog = LoginDialog()
                 if login_dialog.exec() != QDialog.Accepted or not login_dialog.accepted:
@@ -323,6 +327,10 @@ class Client2App:
         self._notified_1min = False
         self._show_blank()
         self.set_connection_status('Disconnected')
+        # Cancel the message receiver task if running
+        if self.receiver_task is not None:
+            self.receiver_task.cancel()
+            self.receiver_task = None
         try:
             self.writer.close()
             asyncio.create_task(self.writer.wait_closed())
