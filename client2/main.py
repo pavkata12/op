@@ -236,7 +236,8 @@ class Client2App:
             ip, ok = QInputDialog.getText(None, "Server IP", "Enter the server IP address:")
             if not ok or not ip:
                 QMessageBox.critical(None, "No IP Entered", "No server IP entered. Exiting.")
-                sys.exit(1)
+                self.app.quit()
+                return
             self._save_server_ip(ip)
             server_ip = ip
         self.set_connection_status('Connecting...')
@@ -251,23 +252,19 @@ class Client2App:
                     await self.receiver_task
                 except Exception:
                     pass
+                self.receiver_task = None
             self.receiver_task = asyncio.create_task(self._receive_messages(reader, writer))
-            while True:
-                login_dialog = LoginDialog()
-                if login_dialog.exec() != QDialog.Accepted or not login_dialog.accepted:
-                    continue
-                username, password = login_dialog.get_credentials()
-                if username == 'admin' and password == 'admin123':
-                    self.app.quit()
-                    return
-                auth_data = {
-                    'type': 'auth',
-                    'username': username,
-                    'password': password
-                }
-                writer.write(json.dumps(auth_data).encode() + b'\n')
-                await writer.drain()
-                break
+            username, password = self.get_login_credentials()
+            if username == 'admin' and password == 'admin123':
+                self.app.quit()
+                return
+            auth_data = {
+                'type': 'auth',
+                'username': username,
+                'password': password
+            }
+            writer.write(json.dumps(auth_data).encode() + b'\n')
+            await writer.drain()
         except Exception as e:
             self.set_connection_status('Disconnected')
     def _get_local_ip(self, server_ip):
@@ -298,13 +295,13 @@ class Client2App:
                     self.set_connection_status(f'Connected (Available time: {minutes} minutes)')
                 elif msg_type == 'auth_error':
                     error_msg = msg_dict.get('message', 'Authentication failed')
-                    QMessageBox.critical(None, "Authentication Error", error_msg)
+                    self.show_auth_error_dialog(error_msg)
                     writer.close()
                     self.loop.create_task(writer.wait_closed())
                     self.app.quit()
                     return
                 elif msg_type == 'admin_auth_success':
-                    QMessageBox.information(None, "Admin Access", "Admin access granted. Closing client.")
+                    self.show_admin_access_dialog()
                     writer.close()
                     self.loop.create_task(writer.wait_closed())
                     self.app.quit()
@@ -316,10 +313,11 @@ class Client2App:
                     self.end_session()
                 elif msg_type == 'session_error':
                     error_msg = msg_dict.get('message', 'Session error')
-                    QMessageBox.warning(None, "Session Error", error_msg)
+                    self.show_session_error_dialog(error_msg)
             except Exception:
                 break
         self.set_connection_status('Disconnected')
+        self.receiver_task = None
     def _show_blank(self):
         self.overlay.hide()
         self.blank.show_blank(status=f'Status: {self.connection_status}')
