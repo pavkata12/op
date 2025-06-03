@@ -175,7 +175,8 @@ class Client2App:
         self._init_tray()
         self.overlay.min_btn.clicked.connect(self.overlay.hide)
         self._show_blank()
-        QTimer.singleShot(0, lambda: asyncio.create_task(self._connect_to_server()))
+        self.connecting = False
+        QTimer.singleShot(0, lambda: asyncio.ensure_future(self._connect_to_server()))
         self._notified_5min = False
         self._notified_1min = False
     def _init_tray(self):
@@ -216,17 +217,20 @@ class Client2App:
         with open(SERVER_CONFIG, 'w') as f:
             json.dump({'server_ip': ip}, f)
     async def _connect_to_server(self):
-        server_ip = self._get_server_ip()
-        if not server_ip:
-            from PySide6.QtWidgets import QInputDialog, QMessageBox
-            ip, ok = QInputDialog.getText(None, "Server IP", "Enter the server IP address:")
-            if not ok or not ip:
-                QMessageBox.critical(None, "No IP Entered", "No server IP entered. Exiting.")
-                sys.exit(1)
-            self._save_server_ip(ip)
-            server_ip = ip
-        self.set_connection_status('Connecting...')
+        if self.connecting:
+            return
+        self.connecting = True
         try:
+            server_ip = self._get_server_ip()
+            if not server_ip:
+                from PySide6.QtWidgets import QInputDialog, QMessageBox
+                ip, ok = QInputDialog.getText(None, "Server IP", "Enter the server IP address:")
+                if not ok or not ip:
+                    QMessageBox.critical(None, "No IP Entered", "No server IP entered. Exiting.")
+                    sys.exit(1)
+                self._save_server_ip(ip)
+                server_ip = ip
+            self.set_connection_status('Connecting...')
             reader, writer = await asyncio.open_connection(server_ip, DEFAULT_SERVER_PORT)
             self.set_connection_status('Connected')
             # Start message receiver immediately
@@ -249,7 +253,9 @@ class Client2App:
                 break
         except Exception as e:
             self.set_connection_status('Disconnected')
-            QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
+            QTimer.singleShot(3000, lambda: asyncio.ensure_future(self._connect_to_server()))
+        finally:
+            self.connecting = False
     def _get_local_ip(self, server_ip):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -298,7 +304,7 @@ class Client2App:
             except Exception:
                 break
         self.set_connection_status('Disconnected')
-        QTimer.singleShot(3000, lambda: asyncio.create_task(self._connect_to_server()))
+        QTimer.singleShot(3000, lambda: asyncio.ensure_future(self._connect_to_server()))
     def _show_blank(self):
         self.overlay.hide()
         self.blank.show_blank(status=f'Status: {self.connection_status}')
@@ -323,10 +329,8 @@ class Client2App:
         self._notified_5min = False
         self._notified_1min = False
         self._show_blank()
-        # Reset connection status
         self.set_connection_status('Disconnected')
-        # Wait a bit before reconnecting to avoid race conditions
-        QTimer.singleShot(1000, lambda: asyncio.create_task(self._connect_to_server()))
+        QTimer.singleShot(1000, lambda: asyncio.ensure_future(self._connect_to_server()))
     def _tick(self):
         if self.session_active:
             self.remaining_time -= 1
